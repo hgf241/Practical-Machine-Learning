@@ -1,0 +1,122 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Heiko Geiﬂler"
+date: "31. Januar 2016"
+output: html_document
+---
+
+### Overview
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+
+### The data
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. 
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+### Load the needed libraries
+
+```{r}
+library(ggplot2)
+library(caret)
+library(data.table)
+library(FSelector)
+library(randomForest)
+```
+
+### Loading the data
+
+The training data come from the file `pml_training.csv`. The testing data come from the file `pml_testing.csv`.
+For reading the files I use the `fread` command from the package **data.table** because it's faster than the read.csv command. I also mark the cells with missing values as **NA**
+
+```{r}
+fitness <- fread("pml-training.csv", na.strings=c("NA",""))
+fitness<-as.data.frame(fitness)
+quiz <- fread("pml-testing.csv", na.strings=c("NA",""))
+quiz<-as.data.frame(quiz)
+```
+
+There are five different classes in the dataset. The goal is to predict this classes for the test file.
+
+```{r}
+table(fitness$classe)
+```
+
+The data set contains 160 columns. 
+
+```{r}
+length(names(fitness))
+```
+
+Unfortunately are the most columns empty. So I find out which of the coluns contains many NA values. I collect these columns and remove them from the training data as well as from the test data.
+
+```{r}
+columns <-c(1,3,4,5,6)
+for(i in 1:length(fitness)) 
+{ 
+  if(sum(is.na( fitness[, i]))  > 100 ) 
+  { 
+    columns<-c(columns,i)
+  }   
+} 
+fitness <- fitness[-columns]
+quiz <- quiz[-columns]
+```
+
+### Prepare the data for the model
+
+Because there are over 50 columns in the data set, I have to reduce the variables. Otherwise the model would need by far to much time. So I use the `information.gain` from the library **FSelector** to select the best combination of attributes according to its "Information Gain".
+
+```{r}
+weights<-information.gain(classe~.,fitness)
+print(weights)
+```
+
+Now I select the 10 most important attributes from this weights. And convert the attributes to a formula.
+
+```{r}
+subset <- cutoff.k(weights, 10)
+form <- as.simple.formula(subset, "classe")
+print(form)
+```
+
+Now I create the training set and the validation set from the `pml-training.csv` data set.
+
+```{r}
+set.seed(1)
+inTrain <- createDataPartition(y=fitness$classe, p=0.7, list=FALSE)
+training <- fitness[inTrain,]
+testing <- fitness[-inTrain,]
+dim(training); dim(testing)
+```
+
+### Create the model and the prediction
+
+Now I use the `randomForest` to build a model and train it.
+
+```{r}
+modFit <- train(form, data = training, method="rf")
+modFit
+```
+
+With this model I predict the classes in the validation test set. And check the prediction with the confusion matrix.
+
+```{r}
+pred <- predict(modFit, testing)
+confusionMatrix(pred, testing$classe)
+```
+
+Finally I use the model to predict classes for the testing dataset, which is used in the quiz.
+
+```{r}
+answers<-predict(modFit,quiz)
+answers
+```
